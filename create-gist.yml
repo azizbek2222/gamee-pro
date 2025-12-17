@@ -1,0 +1,26 @@
+export default {
+  async fetch(request, env) {
+    if (request.method !== "POST") return new Response("Only POST", { status: 405 });
+
+    const { html } = await request.json();
+
+    const res = await fetch("https://api.github.com/gists", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${env.MY_GITHUB_TOKEN}`,
+        "Content-Type": "application/json",
+        "User-Agent": "html-link-generator"
+      },
+      body: JSON.stringify({
+        public: true,
+        files: { "index.html": { content: html } }
+      })
+    });
+
+    const data = await res.json();
+
+    return new Response(JSON.stringify({ link: data.html_url }), {
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+};
