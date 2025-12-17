@@ -1,0 +1,23 @@
+name: Create Gist
+
+on:
+  repository_dispatch:
+    types: [create_gist]
+
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Gist
+        run: |
+          curl -X POST https://api.github.com/gists \
+          -H "Authorization: Bearer ${{ secrets.MY_GITHUB_TOKEN }}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "public": true,
+            "files": {
+              "index.html": {
+                "content": "${{ github.event.client_payload.html }}"
+              }
+            }
+          }'
