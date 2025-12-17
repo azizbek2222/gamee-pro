@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+<h2>HTML yozing</h2>
+<textarea id="html" style="width:100%;height:200px"></textarea>
+<br>
+<button onclick="send()">Link olish</button>
+<br>
+<input id="result" placeholder="Link shu yerda chiqadi">
+
+<script>
+async function send() {
+  const html = document.getElementById("html").value;
+
+  const res = await fetch("https://YOUR_WORKER_URL", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ html })
+  });
+
+  const data = await res.json();
+  document.getElementById("result").value = data.link; // Shu yerda link chiqadi
+}
+</script>
+
+</body>
+</html>
