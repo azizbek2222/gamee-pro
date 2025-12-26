@@ -23,36 +23,37 @@ const cashoutBtn = document.getElementById('cashout-btn');
 const potentialWinEl = document.getElementById('potential-win');
 const balanceEl = document.getElementById('user-balance');
 
-// AdsGram
 const AdController = window.Adsgram?.init({ blockId: "int-20012" }); 
 
 let gameState = "waiting";
 let currentMultiplier = 1.00;
-let hasCashedOut = false;
-let lastRoundTimestamp = 0; // Har bir raundni unikal vaqt bilan belgilaymiz
+let lastRoundId = "";
+let userHasCashedOutInThisRound = false;
 
-// Balansni kuzatish
-onValue(ref(db, `users/${userId}/balance`), (snap) => {
-    const val = snap.val() || 0;
-    if (balanceEl) balanceEl.innerText = parseFloat(val).toFixed(6);
+// 1. Foydalanuvchi balansini va joriy raunddagi cashout holatini kuzatish
+onValue(ref(db, `users/${userId}`), (snap) => {
+    const userData = snap.val();
+    if (userData) {
+        if (balanceEl) balanceEl.innerText = parseFloat(userData.balance || 0).toFixed(6);
+        // Bazadagi holatni tekshiramiz
+        userHasCashedOutInThisRound = userData.lastCashedRound === lastRoundId;
+    }
 });
 
-// O'yin holatini kuzatish
+// 2. O'yin holatini kuzatish
 const gameRef = ref(db, 'crash_game');
 onValue(gameRef, (snap) => {
     const data = snap.val();
     if (!data) return;
     
-    // Yangi raund boshlanganini tekshirish
-    if (data.lastUpdate !== lastRoundTimestamp) {
-        // Agar o'yin waiting holatiga o'tsa yoki yangi parvoz boshlansa
-        if (data.state === "waiting" || (gameState === "crashed" && data.state === "flying")) {
-            hasCashedOut = false; // Faqat yangi raundda cashoutni ruxsat beramiz
-        }
-        lastRoundTimestamp = data.lastUpdate;
+    // Raund o'zgarganini aniqlash (lastUpdate orqali)
+    const currentRoundId = data.lastUpdate.toString();
+    if (lastRoundId !== currentRoundId) {
+        lastRoundId = currentRoundId;
+        // Yangi raund boshlanganda local holatni yangilaymiz
+        // userHasCashedOutInThisRound Firebase orqali o'z-o'zidan yangilanadi
     }
 
-    // Reklama ko'rsatish mantiqi
     if (gameState !== "crashed" && data.state === "crashed") {
         showAdAfterCrash();
     }
@@ -64,9 +65,7 @@ onValue(gameRef, (snap) => {
 
 function showAdAfterCrash() {
     if (AdController) {
-        AdController.show()
-            .then(() => console.log("Ad shown"))
-            .catch((err) => console.log("Ad error", err));
+        AdController.show().catch((err) => console.log("Ad error", err));
     }
 }
 
@@ -79,12 +78,11 @@ function updateUI() {
         multiplierEl.style.color = "#fff";
         statusEl.innerText = "RAKETA PARVOZDA...";
         
-        // Raketa harakati
         let shift = (currentMultiplier - 1) * 15;
         rocketEl.style.transform = `translate(${shift}px, -${shift}px) rotate(-45deg)`;
 
-        // ASOSIY TUZATISH: Agar ushbu raundda pul olingan bo'lsa, tugma mutlaqo chiqmaydi
-        if (hasCashedOut) {
+        // ASOSIY TEKSHIRUV: Agar foydalanuvchi ushbu raundda pul olgan bo'lsa (Firebase ma'lumoti)
+        if (userHasCashedOutInThisRound) {
             cashoutBtn.style.display = 'none';
         } else {
             cashoutBtn.style.display = 'block';
@@ -96,7 +94,6 @@ function updateUI() {
         statusEl.innerText = "BOOM! " + currentMultiplier.toFixed(2) + "x";
         cashoutBtn.style.display = 'none';
         rocketEl.style.transform = "scale(0)";
-        // Raund tugadi, lekin hasCashedOut ni hali reset qilmaymiz (waiting bo'lguncha)
     } else if (gameState === "waiting") {
         displayArea.classList.remove('flying');
         multiplierEl.innerText = "1.00x";
@@ -104,37 +101,40 @@ function updateUI() {
         statusEl.innerText = "TAYYORLANMOQDA...";
         cashoutBtn.style.display = 'none';
         rocketEl.style.transform = "translate(0,0) rotate(-45deg) scale(1)";
-        hasCashedOut = false; // Kutish vaqtida keyingi o'yin uchun ochamiz
     }
 }
 
-// Cash Out funksiyasi
+// 3. Cash Out funksiyasi - Firebase-ga raund ID-sini yozish bilan
 cashoutBtn.addEventListener('click', async () => {
-    // Agar allaqachon pul olingan bo'lsa yoki uchmayotgan bo'lsa rad etish
-    if (hasCashedOut || gameState !== "flying") return;
+    if (gameState !== "flying" || userHasCashedOutInThisRound) return;
     
-    hasCashedOut = true; // Local holatni darhol true qilamiz
-    cashoutBtn.style.display = 'none'; // Tugmani darhol yashiramiz
+    // Tugmani darhol yashiramiz (UI tezligi uchun)
+    cashoutBtn.style.display = 'none';
+    userHasCashedOutInThisRound = true;
 
     const winAmount = currentMultiplier * 0.0001;
     
     try {
         const userRef = ref(db, `users/${userId}`);
         const snap = await get(userRef);
-        const oldBalance = snap.exists() ? (parseFloat(snap.val().balance) || 0) : 0;
+        const userData = snap.val() || { balance: 0 };
+        const oldBalance = parseFloat(userData.balance) || 0;
         
-        await update(userRef, { balance: parseFloat((oldBalance + winAmount).toFixed(6)) });
+        // Balansni yangilash va ushbu raundda pul olganini bazaga muhrlash
+        await update(userRef, { 
+            balance: parseFloat((oldBalance + winAmount).toFixed(6)),
+            lastCashedRound: lastRoundId // Ushbu foydalanuvchi uchun raundni band qilamiz
+        });
         
         statusEl.innerText = `YUTUQ: +${winAmount.toFixed(6)} USDT`;
         statusEl.style.color = "#10b981";
     } catch (e) {
         console.error("Xato:", e);
-        // Xatolik bo'lsa foydalanuvchiga qayta urinish imkonini berish uchun:
-        // hasCashedOut = false; 
+        userHasCashedOutInThisRound = false; 
     }
 });
 
-// Admin Sinxronizator
+// 4. Admin Sinxronizator (O'yinni boshqarish)
 setInterval(async () => {
     const snap = await get(gameRef);
     const data = snap.val();
