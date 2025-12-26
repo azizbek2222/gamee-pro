@@ -22,22 +22,22 @@ const statusEl = document.getElementById('game-status');
 const cashoutBtn = document.getElementById('cashout-btn');
 const potentialWinEl = document.getElementById('potential-win');
 const balanceEl = document.getElementById('user-balance');
-const displayArea = document.getElementById('display-area');
 
 let gameState = "waiting";
 let currentMultiplier = 1.00;
 let hasCashedOut = false;
 
+// Balansni kuzatish
 onValue(ref(db, `users/${userId}/balance`), (snap) => {
-    balanceEl.innerText = (snap.val() || 0).toFixed(6);
+    const val = snap.val() || 0;
+    balanceEl.innerText = parseFloat(val).toFixed(6);
 });
 
+// O'yin holatini kuzatish (Multiplayer)
 const gameRef = ref(db, 'crash_game');
-
 onValue(gameRef, (snap) => {
     const data = snap.val();
     if (!data) return;
-
     currentMultiplier = data.multiplier;
     gameState = data.state;
     updateUI();
@@ -45,81 +45,55 @@ onValue(gameRef, (snap) => {
 
 function updateUI() {
     if (gameState === "flying") {
-        displayArea.classList.add('flying');
         multiplierEl.innerText = currentMultiplier.toFixed(2) + "x";
-        multiplierEl.style.color = "#ffffff";
         statusEl.innerText = "RAKETA PARVOZDA...";
-        statusEl.style.color = "#38bdf8";
-        
-        // Raketa miqyosi o'sadi
-        const scale = 1 + (currentMultiplier - 1) * 0.1;
-        rocketEl.style.transform = `scale(${Math.min(scale, 2)}) rotate(-45deg)`;
-        
+        rocketEl.style.transform = `scale(${1 + (currentMultiplier-1)*0.1}) rotate(-45deg)`;
         if (!hasCashedOut) {
             cashoutBtn.style.display = 'block';
             potentialWinEl.innerText = (currentMultiplier * 0.00001).toFixed(6);
         }
-    } 
-    else if (gameState === "crashed") {
-        displayArea.classList.remove('flying');
+    } else if (gameState === "crashed") {
         multiplierEl.style.color = "#ef4444";
-        statusEl.innerText = "PORTLADI! (" + currentMultiplier.toFixed(2) + "x)";
-        statusEl.style.color = "#ef4444";
+        statusEl.innerText = "BOOM! " + currentMultiplier.toFixed(2) + "x";
         cashoutBtn.style.display = 'none';
-        rocketEl.style.transform = "scale(0) rotate(-45deg)";
+        rocketEl.style.transform = "scale(0)";
         hasCashedOut = false;
-    } 
-    else if (gameState === "waiting") {
-        displayArea.classList.remove('flying');
+    } else if (gameState === "waiting") {
         multiplierEl.innerText = "1.00x";
-        multiplierEl.style.color = "#64748b";
-        statusEl.innerText = "TAYYORGARLIK...";
-        statusEl.style.color = "#94a3b8";
+        multiplierEl.style.color = "#fff";
+        statusEl.innerText = "TAYYORLANMOQDA...";
         cashoutBtn.style.display = 'none';
         rocketEl.style.transform = "scale(1) rotate(-45deg)";
     }
 }
 
+// Cash Out funksiyasi
 cashoutBtn.addEventListener('click', async () => {
     if (gameState !== "flying" || hasCashedOut) return;
-
     hasCashedOut = true;
     const winAmount = currentMultiplier * 0.00001;
     
     const userRef = ref(db, `users/${userId}`);
     const snap = await get(userRef);
-    const currentBalance = snap.exists() ? (snap.val().balance || 0) : 0;
+    const oldBalance = snap.exists() ? (parseFloat(snap.val().balance) || 0) : 0;
     
-    await update(userRef, { balance: Number((currentBalance + winAmount).toFixed(6)) });
-    
+    await update(userRef, { balance: parseFloat((oldBalance + winAmount).toFixed(6)) });
     cashoutBtn.style.display = 'none';
-    statusEl.innerText = `YUTUQ OLINDI! +${winAmount.toFixed(6)}`;
-    statusEl.style.color = "#10b981";
+    statusEl.innerText = `YUTUQ: +${winAmount.toFixed(6)} USDT`;
 });
 
-// Admin Loop
+// Admin Sinxronizator (Sekundiga 10 marta yangilaydi)
 setInterval(async () => {
     const snap = await get(gameRef);
     const data = snap.val();
-
     if (!data || data.lastUpdate < Date.now() - 2000) {
         if (!data || data.state === "crashed") {
             set(gameRef, { state: "waiting", multiplier: 1.00, lastUpdate: Date.now() });
-            setTimeout(() => set(gameRef, { 
-                state: "flying", 
-                multiplier: 1.00, 
-                lastUpdate: Date.now(), 
-                crashAt: (Math.random() * 3.5 + 1.1).toFixed(2) 
-            }), 3000);
+            setTimeout(() => set(gameRef, { state: "flying", multiplier: 1.00, lastUpdate: Date.now(), crashAt: (Math.random() * 4 + 1.1).toFixed(2) }), 3000);
         } else if (data.state === "flying") {
-            const newMultiplier = data.multiplier + 0.07;
-            if (newMultiplier >= parseFloat(data.crashAt)) {
-                set(gameRef, { state: "crashed", multiplier: data.multiplier, lastUpdate: Date.now() });
-            } else {
-                update(gameRef, { multiplier: newMultiplier, lastUpdate: Date.now() });
-            }
+            const nextM = data.multiplier + 0.08; // Tezlashtirilgan
+            if (nextM >= parseFloat(data.crashAt)) set(gameRef, { state: "crashed", multiplier: data.multiplier, lastUpdate: Date.now() });
+            else update(gameRef, { multiplier: nextM, lastUpdate: Date.now() });
         }
     }
-}, 150);
-
-if (tg) { tg.expand(); tg.ready(); }
+}, 100);

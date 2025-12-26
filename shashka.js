@@ -14,191 +14,178 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// Telegram foydalanuvchi ID raqamini olish
 const tg = window.Telegram?.WebApp;
-const tgUserId = tg?.initDataUnsafe?.user?.id || "test_user"; // Telegramdan kelmasa test_user ishlatiladi
+const tgUserId = tg?.initDataUnsafe?.user?.id || "test_user";
 
-const board = document.getElementById('board');
+const boardElement = document.getElementById('board');
 const statusText = document.getElementById('game-status');
-const balanceText = document.getElementById('balance');
-let selectedPiece = null;
-let turn = 'black'; 
-let gameState = Array(8).fill().map(() => Array(8).fill(null));
+const balanceText = document.getElementById('user-balance');
 
-// Balansni real vaqtda Telegram ID orqali kuzatish
-const balanceRef = ref(db, `users/${tgUserId}/balance`);
-onValue(balanceRef, (snap) => {
-    const val = snap.val() || 0;
-    if (balanceText) balanceText.innerText = parseFloat(val).toFixed(5);
+let gameState = Array(8).fill(null).map(() => Array(8).fill(null));
+let selectedPiece = null;
+let turn = 'white'; // white - foydalanuvchi, black - AI
+
+// Balansni realtime kuzatish
+onValue(ref(db, `users/${tgUserId}/balance`), (snap) => {
+    const b = snap.val() || 0;
+    if (balanceText) balanceText.innerText = parseFloat(b).toFixed(6);
 });
 
-function initGame() {
-    gameState = Array(8).fill().map(() => Array(8).fill(null));
-    for (let r = 0; r < 8; r++) {
-        for (let c = 0; c < 8; c++) {
-            if ((r + c) % 2 !== 0) {
-                if (r < 3) gameState[r][c] = { color: 'white', isKing: false }; 
-                if (r > 4) gameState[r][c] = { color: 'black', isKing: false }; 
-            }
+function initBoard() {
+    gameState = Array(8).fill(null).map(() => Array(8).fill(null));
+    for (let r = 0; r < 3; r++) {
+        for (let c = (r % 2 === 0 ? 1 : 0); c < 8; c += 2) {
+            gameState[r][c] = { color: 'black', king: false };
+        }
+    }
+    for (let r = 5; r < 8; r++) {
+        for (let c = (r % 2 === 0 ? 1 : 0); c < 8; c += 2) {
+            gameState[r][c] = { color: 'white', king: false };
         }
     }
     renderBoard();
 }
 
 function renderBoard() {
-    board.innerHTML = '';
+    boardElement.innerHTML = '';
     for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
             const cell = document.createElement('div');
             cell.className = `cell ${(r + c) % 2 === 0 ? 'light' : 'dark'}`;
-            if (gameState[r][c]) {
-                const piece = document.createElement('div');
-                piece.className = `piece ${gameState[r][c].color} ${gameState[r][c].isKing ? 'king' : ''}`;
-                if (selectedPiece && selectedPiece.r === r && selectedPiece.c === c) piece.classList.add('selected');
-                piece.onclick = (e) => { e.stopPropagation(); if(turn === 'black') handlePieceClick(r, c); };
-                cell.appendChild(piece);
+            cell.onclick = () => handleCellClick(r, c);
+            
+            const piece = gameState[r][c];
+            if (piece) {
+                const pDiv = document.createElement('div');
+                pDiv.className = `piece ${piece.color} ${piece.king ? 'king' : ''} ${selectedPiece?.r === r && selectedPiece?.c === c ? 'selected' : ''}`;
+                pDiv.innerHTML = piece.king ? '👑' : '';
+                cell.appendChild(pDiv);
             }
-            cell.onclick = () => { if(turn === 'black') handleCellClick(r, c); };
-            board.appendChild(cell);
+            boardElement.appendChild(cell);
         }
-    }
-}
-
-function handlePieceClick(r, c) {
-    if (gameState[r][c] && gameState[r][c].color === 'black') {
-        selectedPiece = { r, c };
-        renderBoard();
     }
 }
 
 function handleCellClick(r, c) {
-    if (!selectedPiece) return;
-    const piece = gameState[selectedPiece.r][selectedPiece.c];
-    if (gameState[r][c] || (r + c) % 2 === 0) return;
+    if (turn !== 'white') return;
 
-    const rDiff = r - selectedPiece.r;
-    const cDiff = Math.abs(c - selectedPiece.c);
-
-    if (piece.isKing) {
-        if (Math.abs(rDiff) === cDiff && isPathClear(selectedPiece.r, selectedPiece.c, r, c)) {
-            executeMove(selectedPiece.r, selectedPiece.c, r, c);
-        } else if (Math.abs(rDiff) === cDiff) {
-            checkKingCapture(selectedPiece.r, selectedPiece.c, r, c);
-        }
-    } else {
-        if (rDiff === -1 && cDiff === 1) executeMove(selectedPiece.r, selectedPiece.c, r, c);
-        else if (Math.abs(rDiff) === 2 && cDiff === 2) {
-            const midR = (r + selectedPiece.r) / 2;
-            const midC = (c + selectedPiece.c) / 2;
-            if (gameState[midR][midC] && gameState[midR][midC].color === 'white') {
-                gameState[midR][midC] = null;
-                executeMove(selectedPiece.r, selectedPiece.c, r, c);
-            }
+    const piece = gameState[r][c];
+    if (piece && piece.color === 'white') {
+        selectedPiece = { r, c };
+        renderBoard();
+    } else if (selectedPiece) {
+        if (executeMove(selectedPiece.r, selectedPiece.c, r, c)) {
+            selectedPiece = null;
+            turn = 'black';
+            renderBoard();
+            setTimeout(aiMove, 800);
         }
     }
 }
 
-function isPathClear(fR, fC, tR, tC) {
-    let rStep = tR > fR ? 1 : -1, cStep = tC > fC ? 1 : -1;
-    let currR = fR + rStep, currC = fC + cStep;
-    while (currR !== tR) {
-        if (gameState[currR][currC]) return false;
-        currR += rStep; currC += cStep;
-    }
-    return true;
-}
+function executeMove(fr, fc, tr, tc) {
+    const piece = gameState[fr][fc];
+    const distR = tr - fr;
+    const distC = tc - fc;
 
-function checkKingCapture(fR, fC, tR, tC) {
-    let rStep = tR > fR ? 1 : -1, cStep = tC > fC ? 1 : -1;
-    let currR = fR + rStep, currC = fC + cStep;
-    let victim = null;
-    while (currR !== tR) {
-        if (gameState[currR][currC]) {
-            if (victim || gameState[currR][currC].color === turn) return;
-            victim = { r: currR, c: currC };
+    // Oddiy yurish
+    if (Math.abs(distR) === 1 && Math.abs(distC) === 1 && !gameState[tr][tc]) {
+        if (piece.color === 'white' && distR > 0 && !piece.king) return false;
+        if (piece.color === 'black' && distR < 0 && !piece.king) return false;
+        
+        gameState[tr][tc] = piece;
+        gameState[fr][fc] = null;
+        checkKing(tr, tc);
+        return true;
+    }
+
+    // Urish (Capture)
+    if (Math.abs(distR) === 2 && Math.abs(distC) === 2) {
+        const midR = (fr + tr) / 2;
+        const midC = (fc + tc) / 2;
+        const midPiece = gameState[midR][midC];
+
+        if (midPiece && midPiece.color !== piece.color && !gameState[tr][tc]) {
+            gameState[tr][tc] = piece;
+            gameState[fr][fc] = null;
+            gameState[midR][midC] = null;
+            checkKing(tr, tc);
+            return true;
         }
-        currR += rStep; currC += cStep;
     }
-    if (victim) {
-        gameState[victim.r][victim.c] = null;
-        executeMove(fR, fC, tR, tC);
-    }
+    return false;
 }
 
-function executeMove(fR, fC, tR, tC) {
-    let p = gameState[fR][fC];
-    if (turn === 'black' && tR === 0) p.isKing = true;
-    if (turn === 'white' && tR === 7) p.isKing = true;
-    gameState[tR][tC] = p;
-    gameState[fR][fC] = null;
-    selectedPiece = null;
-    renderBoard();
-    if (checkGameOver()) return;
-    turn = turn === 'black' ? 'white' : 'black';
-    statusText.innerText = turn === 'white' ? "AI o'ylamoqda..." : "Sizning navbatingiz (Qora)";
-    if (turn === 'white') setTimeout(aiMove, 800);
+function checkKing(r, c) {
+    const piece = gameState[r][c];
+    if (piece.color === 'white' && r === 0) piece.king = true;
+    if (piece.color === 'black' && r === 7) piece.king = true;
 }
 
-// AI KUCHAYTIRILGAN
 function aiMove() {
-    let moves = [], captures = [];
+    let moves = [];
+    let captures = [];
+
     for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
             const p = gameState[r][c];
-            if (p?.color === 'white') {
-                const dirs = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+            if (p?.color === 'black') {
+                const dirs = [[1,1], [1,-1], [-1,1], [-1,-1]];
                 dirs.forEach(([dr, dc]) => {
-                    if (p.isKing) {
-                        for (let d = 1; d < 8; d++) {
-                            let tr = r + dr * d, tc = c + dc * d;
-                            if (tr < 0 || tr > 7 || tc < 0 || tc > 7) break;
-                            if (!gameState[tr][tc]) moves.push({ f: { r, c }, t: { r: tr, c: tc }, score: 10 });
-                            else if (gameState[tr][tc].color === 'black') {
-                                let er = tr + dr, ec = tc + dc;
-                                if (er >= 0 && er <= 7 && ec >= 0 && ec <= 7 && !gameState[er][ec]) {
-                                    captures.push({ f: { r, c }, t: { r: er, c: ec }, v: { r: tr, c: tc }, score: 100 });
-                                }
-                                break;
-                            } else break;
+                    // Capture check
+                    let tr = r + dr * 2, tc = c + dc * 2;
+                    if (tr>=0 && tr<8 && tc>=0 && tc<8) {
+                        let mr = r+dr, mc = c+dc;
+                        if (gameState[mr][mc]?.color === 'white' && !gameState[tr][tc]) {
+                            captures.push({fr:r, fc:c, tr, tc, mr, mc});
                         }
-                    } else {
-                        let tr = r + dr, tc = c + dc;
-                        let er = r + dr * 2, ec = c + dc * 2;
-                        if (er >= 0 && er <= 7 && ec >= 0 && ec <= 7 && gameState[tr][tc]?.color === 'black' && !gameState[er][ec]) {
-                            captures.push({ f: { r, c }, t: { r: er, c: ec }, v: { r: tr, c: tc }, score: 100 });
-                        }
-                        if (dr > 0 && tr >= 0 && tr <= 7 && tc >= 0 && tc <= 7 && !gameState[tr][tc]) {
-                            moves.push({ f: { r, c }, t: { r: tr, c: tc }, score: tr });
-                        }
+                    }
+                    // Simple move check
+                    tr = r+dr; tc = c+dc;
+                    if (tr>=0 && tr<8 && tc>=0 && tc<8 && !gameState[tr][tc]) {
+                        if (p.king || dr > 0) moves.push({fr:r, fc:c, tr, tc});
                     }
                 });
             }
         }
     }
-    let m = captures.length > 0 ? captures[0] : moves.sort((a,b)=>b.score-a.score)[0];
+
+    const m = captures.length > 0 ? captures[0] : moves[Math.floor(Math.random() * moves.length)];
     if (m) {
-        if (m.v) gameState[m.v.r][m.v.c] = null;
-        executeMove(m.f.r, m.f.c, m.t.r, m.t.c);
-    } else checkGameOver();
+        if (m.mr !== undefined) gameState[m.mr][m.mc] = null;
+        gameState[m.tr][m.tc] = gameState[m.fr][m.fc];
+        gameState[m.fr][m.fc] = null;
+        checkKing(m.tr, m.tc);
+    }
+    
+    turn = 'white';
+    renderBoard();
+    checkGameOver();
 }
 
-function checkGameOver() {
+async function checkGameOver() {
     let w = 0, b = 0;
-    gameState.flat().forEach(p => { if (p?.color === 'white') w++; if (p?.color === 'black') b++; });
-    if (w === 0) { endGame("G'alaba! 0.0003 USDT qo'shildi", 0.0003); return true; }
-    if (b === 0) { endGame("AI yutdi!", 0); return true; }
-    return false;
+    gameState.flat().forEach(p => { if(p?.color === 'white') w++; if(p?.color === 'black') b++; });
+    
+    if (w === 0) {
+        alert("Mag'lubiyat!");
+        initBoard();
+    } else if (b === 0) {
+        await endGame("G'alaba! +0.0003 USDT", 0.0003);
+    }
 }
 
 async function endGame(msg, prize) {
+    const userRef = ref(db, `users/${tgUserId}`);
+    const snap = await get(userRef);
+    const oldBalance = snap.exists() ? (parseFloat(snap.val().balance) || 0) : 0;
+    
+    const newBalance = parseFloat((oldBalance + prize).toFixed(6));
+    await update(userRef, { balance: newBalance });
+    
     alert(msg);
-    if (prize > 0) {
-        const userRef = ref(db, `users/${tgUserId}`);
-        const snap = await get(userRef);
-        let cur = snap.exists() ? (parseFloat(snap.val().balance) || 0) : 0;
-        await update(userRef, { balance: Number((cur + prize).toFixed(5)) });
-    }
-    initGame();
+    initBoard();
 }
 
-initGame();
+initBoard();
+if (tg) { tg.expand(); tg.ready(); }

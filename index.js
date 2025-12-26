@@ -25,28 +25,17 @@ if (welcomeMsg) {
     welcomeMsg.innerText = `Xush kelibsiz, ${userName}!`;
 }
 
-// Balansni olish
+// Balansni Realtime o'qish
 const balanceRef = ref(db, 'users/' + userId + '/balance');
 onValue(balanceRef, (snapshot) => {
     const data = snapshot.val();
-    const currentBalance = data !== null ? parseFloat(data).toFixed(5) : "0.00000";
+    const currentBalance = data !== null ? parseFloat(data).toFixed(6) : "0.000000";
     if (balanceEl) balanceEl.innerText = currentBalance;
 });
 
-// O'yinlarni ochish funksiyasi
-window.openGame = (game) => {
-    if (game === 'shashka') {
-        window.location.href = 'shashka.html';
-    } else if (game === 'mines') {
-        window.location.href = 'mines.html'; // Mines o'yini uchun fayl
-    }
-};
+// Tugmalarga event qo'shish
+document.getElementById('shashka-btn')?.addEventListener('click', () => window.location.href = 'shashka.html');
+document.getElementById('mines-btn')?.addEventListener('click', () => window.location.href = 'mines.html');
+document.getElementById('crash-btn')?.addEventListener('click', () => window.location.href = 'crash.html');
 
-// Tugmalarga hodisalarni bog'lash
-document.getElementById('shashka-btn')?.addEventListener('click', () => openGame('shashka'));
-document.getElementById('mines-btn')?.addEventListener('click', () => openGame('mines'));
-
-if (tg) {
-    tg.expand();
-    tg.ready();
-}
+if (tg) { tg.expand(); tg.ready(); }
