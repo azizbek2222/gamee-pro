@@ -23,6 +23,9 @@ const cashoutBtn = document.getElementById('cashout-btn');
 const potentialWinEl = document.getElementById('potential-win');
 const balanceEl = document.getElementById('user-balance');
 
+// AdsGram integratsiyasi
+const AdController = window.Adsgram?.init({ blockId: "int-20012" }); // O'z blockId-ngizni qo'ying
+
 let gameState = "waiting";
 let currentMultiplier = 1.00;
 let hasCashedOut = false;
@@ -30,22 +33,38 @@ let hasCashedOut = false;
 // Balansni kuzatish
 onValue(ref(db, `users/${userId}/balance`), (snap) => {
     const val = snap.val() || 0;
-    balanceEl.innerText = parseFloat(val).toFixed(6);
+    if (balanceEl) balanceEl.innerText = parseFloat(val).toFixed(6);
 });
 
-// O'yin holatini kuzatish (Multiplayer)
+// O'yin holatini kuzatish
 const gameRef = ref(db, 'crash_game');
 onValue(gameRef, (snap) => {
     const data = snap.val();
     if (!data) return;
+    
+    // Agar raketa hozirgina portlagan bo'lsa (crashed), reklama ko'rsatishga harakat qilamiz
+    if (gameState !== "crashed" && data.state === "crashed") {
+        showAdAfterCrash();
+    }
+
     currentMultiplier = data.multiplier;
     gameState = data.state;
     updateUI();
 });
 
+// Reklama ko'rsatish funksiyasi
+function showAdAfterCrash() {
+    if (AdController) {
+        AdController.show()
+            .then(() => console.log("Crashdan keyin reklama ko'rsatildi"))
+            .catch((err) => console.log("Reklama yuklanmadi, o'yin davom etadi", err));
+    }
+}
+
 function updateUI() {
     if (gameState === "flying") {
         multiplierEl.innerText = currentMultiplier.toFixed(2) + "x";
+        multiplierEl.style.color = "#fff";
         statusEl.innerText = "RAKETA PARVOZDA...";
         rocketEl.style.transform = `scale(${1 + (currentMultiplier-1)*0.1}) rotate(-45deg)`;
         if (!hasCashedOut) {
@@ -82,7 +101,7 @@ cashoutBtn.addEventListener('click', async () => {
     statusEl.innerText = `YUTUQ: +${winAmount.toFixed(6)} USDT`;
 });
 
-// Admin Sinxronizator (Sekundiga 10 marta yangilaydi)
+// Admin Sinxronizator
 setInterval(async () => {
     const snap = await get(gameRef);
     const data = snap.val();
@@ -91,9 +110,11 @@ setInterval(async () => {
             set(gameRef, { state: "waiting", multiplier: 1.00, lastUpdate: Date.now() });
             setTimeout(() => set(gameRef, { state: "flying", multiplier: 1.00, lastUpdate: Date.now(), crashAt: (Math.random() * 4 + 1.1).toFixed(2) }), 3000);
         } else if (data.state === "flying") {
-            const nextM = data.multiplier + 0.08; // Tezlashtirilgan
+            const nextM = data.multiplier + 0.08;
             if (nextM >= parseFloat(data.crashAt)) set(gameRef, { state: "crashed", multiplier: data.multiplier, lastUpdate: Date.now() });
             else update(gameRef, { multiplier: nextM, lastUpdate: Date.now() });
         }
     }
 }, 100);
+
+if (tg) { tg.expand(); tg.ready(); }
