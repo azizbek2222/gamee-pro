@@ -26,7 +26,7 @@ if (welcomeMsg) {
 }
 
 // AdsGram Reklama Integratsiyasi
-const AdController = window.Adsgram?.init({ blockId: "4723" }); // "your-block-id" o'rniga o'zingiznikini qo'ying
+const AdController = window.Adsgram?.init({ blockId: "int-20012" }); // "your-block-id" o'rniga o'zingiznikini qo'ying
 
 async function showAdOnStart() {
     // sessionStorage ilova yopilguncha ma'lumotni saqlaydi
