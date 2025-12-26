@@ -23,12 +23,13 @@ const cashoutBtn = document.getElementById('cashout-btn');
 const potentialWinEl = document.getElementById('potential-win');
 const balanceEl = document.getElementById('user-balance');
 
-// AdsGram integratsiyasi
-const AdController = window.Adsgram?.init({ blockId: "int-20012" }); // O'z blockId-ngizni qo'ying
+// AdsGram
+const AdController = window.Adsgram?.init({ blockId: "int-20012" }); 
 
 let gameState = "waiting";
 let currentMultiplier = 1.00;
 let hasCashedOut = false;
+let lastRoundTimestamp = 0; // Har bir raundni unikal vaqt bilan belgilaymiz
 
 // Balansni kuzatish
 onValue(ref(db, `users/${userId}/balance`), (snap) => {
@@ -42,7 +43,16 @@ onValue(gameRef, (snap) => {
     const data = snap.val();
     if (!data) return;
     
-    // Agar raketa hozirgina portlagan bo'lsa (crashed), reklama ko'rsatishga harakat qilamiz
+    // Yangi raund boshlanganini tekshirish
+    if (data.lastUpdate !== lastRoundTimestamp) {
+        // Agar o'yin waiting holatiga o'tsa yoki yangi parvoz boshlansa
+        if (data.state === "waiting" || (gameState === "crashed" && data.state === "flying")) {
+            hasCashedOut = false; // Faqat yangi raundda cashoutni ruxsat beramiz
+        }
+        lastRoundTimestamp = data.lastUpdate;
+    }
+
+    // Reklama ko'rsatish mantiqi
     if (gameState !== "crashed" && data.state === "crashed") {
         showAdAfterCrash();
     }
@@ -52,53 +62,76 @@ onValue(gameRef, (snap) => {
     updateUI();
 });
 
-// Reklama ko'rsatish funksiyasi
 function showAdAfterCrash() {
     if (AdController) {
         AdController.show()
-            .then(() => console.log("Crashdan keyin reklama ko'rsatildi"))
-            .catch((err) => console.log("Reklama yuklanmadi, o'yin davom etadi", err));
+            .then(() => console.log("Ad shown"))
+            .catch((err) => console.log("Ad error", err));
     }
 }
 
 function updateUI() {
+    const displayArea = document.getElementById('display-area');
+    
     if (gameState === "flying") {
+        displayArea.classList.add('flying');
         multiplierEl.innerText = currentMultiplier.toFixed(2) + "x";
         multiplierEl.style.color = "#fff";
         statusEl.innerText = "RAKETA PARVOZDA...";
-        rocketEl.style.transform = `scale(${1 + (currentMultiplier-1)*0.1}) rotate(-45deg)`;
-        if (!hasCashedOut) {
+        
+        // Raketa harakati
+        let shift = (currentMultiplier - 1) * 15;
+        rocketEl.style.transform = `translate(${shift}px, -${shift}px) rotate(-45deg)`;
+
+        // ASOSIY TUZATISH: Agar ushbu raundda pul olingan bo'lsa, tugma mutlaqo chiqmaydi
+        if (hasCashedOut) {
+            cashoutBtn.style.display = 'none';
+        } else {
             cashoutBtn.style.display = 'block';
             potentialWinEl.innerText = (currentMultiplier * 0.0001).toFixed(6);
         }
     } else if (gameState === "crashed") {
+        displayArea.classList.remove('flying');
         multiplierEl.style.color = "#ef4444";
         statusEl.innerText = "BOOM! " + currentMultiplier.toFixed(2) + "x";
         cashoutBtn.style.display = 'none';
         rocketEl.style.transform = "scale(0)";
-        hasCashedOut = false;
+        // Raund tugadi, lekin hasCashedOut ni hali reset qilmaymiz (waiting bo'lguncha)
     } else if (gameState === "waiting") {
+        displayArea.classList.remove('flying');
         multiplierEl.innerText = "1.00x";
         multiplierEl.style.color = "#fff";
         statusEl.innerText = "TAYYORLANMOQDA...";
         cashoutBtn.style.display = 'none';
-        rocketEl.style.transform = "scale(1) rotate(-45deg)";
+        rocketEl.style.transform = "translate(0,0) rotate(-45deg) scale(1)";
+        hasCashedOut = false; // Kutish vaqtida keyingi o'yin uchun ochamiz
     }
 }
 
 // Cash Out funksiyasi
 cashoutBtn.addEventListener('click', async () => {
-    if (gameState !== "flying" || hasCashedOut) return;
-    hasCashedOut = true;
+    // Agar allaqachon pul olingan bo'lsa yoki uchmayotgan bo'lsa rad etish
+    if (hasCashedOut || gameState !== "flying") return;
+    
+    hasCashedOut = true; // Local holatni darhol true qilamiz
+    cashoutBtn.style.display = 'none'; // Tugmani darhol yashiramiz
+
     const winAmount = currentMultiplier * 0.0001;
     
-    const userRef = ref(db, `users/${userId}`);
-    const snap = await get(userRef);
-    const oldBalance = snap.exists() ? (parseFloat(snap.val().balance) || 0) : 0;
-    
-    await update(userRef, { balance: parseFloat((oldBalance + winAmount).toFixed(6)) });
-    cashoutBtn.style.display = 'none';
-    statusEl.innerText = `YUTUQ: +${winAmount.toFixed(6)} USDT`;
+    try {
+        const userRef = ref(db, `users/${userId}`);
+        const snap = await get(userRef);
+        const oldBalance = snap.exists() ? (parseFloat(snap.val().balance) || 0) : 0;
+        
+        await update(userRef, { balance: parseFloat((oldBalance + winAmount).toFixed(6)) });
+        
+        statusEl.innerText = `YUTUQ: +${winAmount.toFixed(6)} USDT`;
+        statusEl.style.color = "#10b981";
+    } catch (e) {
+        console.error("Xato:", e);
+        // Xatolik bo'lsa foydalanuvchiga qayta urinish imkonini berish uchun:
+        // hasCashedOut = false; 
+    }
 });
 
 // Admin Sinxronizator
@@ -108,11 +141,21 @@ setInterval(async () => {
     if (!data || data.lastUpdate < Date.now() - 2000) {
         if (!data || data.state === "crashed") {
             set(gameRef, { state: "waiting", multiplier: 1.00, lastUpdate: Date.now() });
-            setTimeout(() => set(gameRef, { state: "flying", multiplier: 1.00, lastUpdate: Date.now(), crashAt: (Math.random() * 4 + 1.1).toFixed(2) }), 3000);
+            setTimeout(() => {
+                set(gameRef, { 
+                    state: "flying", 
+                    multiplier: 1.00, 
+                    lastUpdate: Date.now(), 
+                    crashAt: (Math.random() * 4 + 1.1).toFixed(2) 
+                });
+            }, 3000);
         } else if (data.state === "flying") {
             const nextM = data.multiplier + 0.08;
-            if (nextM >= parseFloat(data.crashAt)) set(gameRef, { state: "crashed", multiplier: data.multiplier, lastUpdate: Date.now() });
-            else update(gameRef, { multiplier: nextM, lastUpdate: Date.now() });
+            if (nextM >= parseFloat(data.crashAt)) {
+                set(gameRef, { state: "crashed", multiplier: data.multiplier, lastUpdate: Date.now() });
+            } else {
+                update(gameRef, { multiplier: nextM, lastUpdate: Date.now() });
+            }
         }
     }
 }, 100);
