@@ -1,68 +1,42 @@
 <!DOCTYPE html>
-<html>
+<html lang="uz">
 <head>
-  <meta charset="UTF-8">
-  <title>HTML → Gist Link</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; background:#111; color:#fff; }
-    h2 { color: #0f0; }
-    textarea { width:100%; height:200px; margin-top:10px; background:#222; color:#fff; border:1px solid #555; padding:10px; font-family: monospace; }
-    button { margin-top:10px; padding:10px 20px; background:#0f0; color:#111; border:none; cursor:pointer; font-weight:bold; }
-    input { width:100%; margin-top:10px; padding:10px; border:1px solid #555; background:#222; color:#0f0; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>O'yinlar Portali</title>
+    <link rel="stylesheet" href="index.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
 
-<h2>HTML yozing va Gist linkini oling</h2>
+    <header>
+        <div class="logo">GameZone</div>
+        <div class="balance-container">
+            <i class="fas fa-wallet"></i>
+            <span id="user-balance">0.00000</span> USDT
+        </div>
+    </header>
 
-<textarea id="html">
-<!DOCTYPE html>
-<html>
-<body>
-<h1>Salom Azizbek!</h1>
-<p>Bu yerga HTML yozishingiz mumkin</p>
-</body>
-</html>
-</textarea>
+    <main>
+        <section class="user-info">
+            <h1 id="welcome-msg">Xush kelibsiz!</h1>
+            <p>Bugun qaysi o'yinni tanlaysiz?</p>
+        </section>
 
-<br>
-<button onclick="send()">Link olish</button>
-<br>
-<input id="result" placeholder="Link shu yerda chiqadi" readonly>
+        <section class="games-list">
+            <h3>O'yinlar ro'yxati</h3>
+            
+            <div class="game-card" id="shashka-btn" style="cursor: pointer;">
+                <div class="game-icon">🏁</div>
+                <div class="game-info">
+                    <h4>Shashka</h4>
+                    <p>Do'stlaringiz bilan shashka o'ynang</p>
+                </div>
+                <i class="fas fa-chevron-right"></i>
+            </div>
+        </section>
+    </main>
 
-<script>
-async function send() {
-  const html = document.getElementById("html").value;
-  const token = "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"; // <- Bu yerga GitHub tokeningni qo'y
-
-  try {
-    const res = await fetch("https://api.github.com/gists", {
-      method: "POST",
-      headers: {
-        "Authorization": "Bearer " + token,
-        "Content-Type": "application/json",
-        "Accept": "application/vnd.github+json"
-      },
-      body: JSON.stringify({
-        public: true,
-        files: {
-          "index.html": { content: html }
-        }
-      })
-    });
-
-    const data = await res.json();
-    console.log(data); // Tekshirish uchun console log
-    if(data.html_url){
-      document.getElementById("result").value = data.html_url;
-    } else {
-      alert("Link olinmadi. Console’ga qarang.");
-    }
-  } catch(err) {
-    alert("Xatolik yuz berdi: " + err);
-  }
-}
-</script>
-
+    <script type="module" src="index.js"></script>
 </body>
 </html>

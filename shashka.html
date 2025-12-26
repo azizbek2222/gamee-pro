@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+   <title>Shashka AI</title>
+    <link rel="stylesheet" href="home.css">
+    <link rel="stylesheet" href="shashka.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="top-bar">
+            <div class="user-info">
+                <i class="fas fa-arrow-left" onclick="location.href='index.html'" style="cursor:pointer;"></i>
+                <span>Shashka vs AI</span>
+            </div>
+            <div class="balance-card">
+                <i class="fas fa-wallet"></i>
+                <span id="balance">0.00000</span> USDT
+            </div>
+        </header>
+
+        <main class="content">
+            <div id="game-status">Sizning navbatingiz (Qora)</div>
+            <div id="board" class="board"></div>
+            <div class="game-controls">
+                <button onclick="location.reload()" class="reset-btn">O'yinni yangilash</button>
+            </div>
+        </main>
+    </div>
+    <script type="module" src="shashka.js"></script>
+</body>
+</html>
