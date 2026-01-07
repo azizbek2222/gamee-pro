@@ -2,36 +2,37 @@
 <html lang="uz">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Mines - Telegram Mini App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mines - GAMEE</title>
     <link rel="stylesheet" href="mines.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
 
-    <header>
-        <div class="logo">Mines</div>
-        <div class="balance-container">
-            <i class="fas fa-wallet"></i>
-            <span id="user-balance">0.00000</span> USDT
-        </div>
-    </header>
+    <div class="app-container">
+        <header class="header">
+            <a href="home.html" class="back-btn">⬅ Orqaga</a>
+            <div class="mini-balance">
+                <img src="https://cryptologos.cc/logos/tether-usdt-logo.png" alt="USDT">
+                <span id="balance">0.000000</span>
+            </div>
+        </header>
 
-    <main>
-        <div class="mines-container">
-            <h1>Minalar o'yini</h1>
-            <p id="game-status">Boshlash uchun tugmani bosing!</p>
-            
-            <div id="mines-grid" class="mines-grid"></div>
+        <main class="game-area">
+            <div class="info-panel">
+                <div class="stat">Minalar: <span id="mine-count">4</span></div>
+                <div class="stat">Yutuq: <span id="current-profit">0.000000</span></div>
+            </div>
+
+            <div id="grid" class="grid">
+                </div>
 
             <div class="controls">
-                <button id="start-game-btn" class="btn-primary">O'yinni boshlash</button>
-                <button id="cashout-btn" class="btn-success" style="display: none;">💰 Pulni olish</button>
-                <button id="restart-game-btn" class="btn-secondary" style="display: none;">Qayta o'ynash</button>
+                <button id="startBtn" class="main-btn">O'YINNI BOSHLASH</button>
+                <button id="cashoutBtn" class="main-btn cashout" disabled>CASH OUT</button>
             </div>
-        </div>
-    </main>
+        </main>
+    </div>
 
     <script type="module" src="mines.js"></script>
 </body>
